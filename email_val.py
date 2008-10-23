@@ -123,7 +123,7 @@ def parse_line_for_format(the_line):
 	sep = None
 	
 	is_in = False
-	no_delims = True
+	no_delims = None
 	i = 0
 	
 	field_count = 0
@@ -145,14 +145,17 @@ def parse_line_for_format(the_line):
 
 			if not is_in:
 				pass
-				#field_count += 1				
+				#field_count += 1
 			
 			#add up the delims
 			delim_count += 1
 			delim_indexes.append(i)
+			
 			is_in = not is_in #reverse is_in
 			
 		elif is_in:
+			if not no_delims:
+				print "no delims...."
 			continue
 			#pass #print 'reg data', ch	
 			
@@ -178,7 +181,7 @@ def parse_line_for_format(the_line):
 	lf.sep_count = sep_count
 	lf.delim_indexes = delim_indexes
 	
-	print field_count, 'is the field count '
+	#print field_count, 'is the field count '
 	#debug("line has %d fields, %d delims and %d seps" % (field_count, delim_count, sep_count))
 	return lf
 
