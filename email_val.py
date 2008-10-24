@@ -12,10 +12,11 @@ import os
 import glob
 import re
 
-__DEBUG__ = False
+from io.file_io import outfile_name
+from validation.email import validate_email, clean_email
 
+__DEBUG__ = False
 config = {'overwrite_files' : False, 'has_header' : True}
-email_regex = r'\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}'
 
 delims = '"', '\'', '`'
 seps = '\t', ','
@@ -39,6 +40,7 @@ def get_csv_files():
 def process_file(infile):
 	good = 0
 	bad = 0
+	cleaned = 0
 	total = 0
 	pf = ProcessedFile()
 	
@@ -47,29 +49,35 @@ def process_file(infile):
 	instream = open(infile, 'r')
 	outstream = open(outfile, 'aw')
 	
-	lf = None #line_format obj
+	ff = None #file_format obj
 	for line in instream:
 		total += 1
 		
-		if (total == 1):
-			lf = parse_line_for_format(line)
-			outstream.write(line) #write header
-			continue
+		ff = get_file_format(line)
+		while ff.email_field == -1 and total < 3:
+		#if (total == 1):
+			ff = get_file_format(line)
+			if ff.email_field == -1:
+				print "MUST QUIT HERE - THROW EXECPTION"		
+			if total == 1:
+				outstream.write(line) #write header
 		
-		#get current line format obj
-		cur_line_format = parse_line_for_format(line)
-		line_consis = parse_line_for_consis(cur_line_format, lf)
-		
-		#fields = line_to_fields(line, cur_line_format)
-		
-		if line_consis and parse_line_for_email(line):
-			#write to stream
-			outstream.write(line)
+		fields = parse(line)
+		email = fields[ff.email_field]
+		email = clean_email(email)
+	
+		if validate_email(email):
 			good += 1
+			if email != fields[ff.email_field]:
+				cleaned += 1
+				line = line.replace(fields[ff.email_field], email)
+			#fields[ff.email_field] = clean_email
+			
+			#TODO: need to get the line back from feilds, but for now just write the line
+			outstream.write(line)
 		else:
 			bad += 1
-			debug("Line %d is not consistant" % total)
-	
+			
 	pf.good_emails = good
 	pf.bad_emails = bad
 	pf.total_emails = total
@@ -84,29 +92,6 @@ def process_file(infile):
 
 	return pf
 	
-def parse_line_for_email(the_line):
-	"""
-	Parse the input line for at lease one email
-	if email found return true else, return false
-	"""
-	if re.search(email_regex, the_line):
-		return True
-	
-	return False
-	
-def parse_line_for_consis(format, match_format):
-	"""
-	Parse the input line for consistancy, basically meaning that it has 
-	an even number of delimeters and half the amount of seperators
-	"""
-	#format = parse_line_for_format(the_line)
-		
-	even_num_delims = ((format.delim_count % 2) == 0)
-	sep_count_correct = (match_format.field_count == format.field_count)
-	#print sep_count_correct
-	
-	return (even_num_delims & sep_count_correct)
-
 	
 class line_format:
 	def __init__(self):
@@ -116,96 +101,132 @@ class line_format:
 		self.sep_count = 0
 		self.delim_count = 0
 		self.delim_indexes = None
-		
-def parse_line_for_format(the_line):
-	global delims, seps
-	delim = None
-	sep = None
+
+class file_format:
+	def __init__(self):
+		self.field_count = 0
+		self.email_field = -1
+
+class line_object:
+	def __init__(self):
+		self.fields = []
+		self.field_count = 0
+		self.sep_count = 0
+		self.delim_count = 0
+
+def parse(the_line):
+	"""
+	"""
 	
+	the_line = the_line.strip()
+
+	#cc = char count, dc = delim count, sc = sep count, fc= field count
+	cc = dc = sc = fc = 0
 	is_in = False
-	no_delims = None
-	i = 0
-	
-	field_count = 0
-	sep_count = 0
-	delim_count = 0
-	delim_indexes = []
-	
+	nf = False
+	delim = None 
+	sep = None
+
+	buff = ''
+	fields = []
 	for ch in the_line:
-		i += 1 #add to char count
-		if not is_in and ch == ' ':
-			continue
-			
-		if ch in delims:
-			no_delims = False
-			if not delim:
-				delim = ch #set delim
-			elif ch != delim:
-				continue
 
-			if not is_in:
-				pass
-				#field_count += 1
-			
-			#add up the delims
-			delim_count += 1
-			delim_indexes.append(i)
-			
-			is_in = not is_in #reverse is_in
-			
-		elif is_in:
-			if not no_delims:
-				print "no delims...."
-			continue
-			#pass #print 'reg data', ch	
-			
-		else: #is sep
-			if ch == ' ' or ch == '\n':
-				continue
-		
-			sep_count += 1
-			field_count += 1
-						
-			if not sep: 
-				sep = ch
-			elif sep and sep != ch:
-				#throw inconsis sep error
-				pass
-			is_in = False
-	
-	lf = line_format()
-	lf.sep = sep
-	lf.delim = delim
-	lf.field_count = field_count
-	lf.delim_count = delim_count
-	lf.sep_count = sep_count
-	lf.delim_indexes = delim_indexes
-	
-	#print field_count, 'is the field count '
-	#debug("line has %d fields, %d delims and %d seps" % (field_count, delim_count, sep_count))
-	return lf
+		cc += 1
+		if cc == 1:
+			pass #fc += 1
 
-def outfile_name(infile):
-	outfile = infile
-		
-	parts = infile.split('.')
-	ext = parts.pop()
-	
-	first_pass = True
-	while parts:
-		if first_pass:
-			base = parts.pop(0)
-			first_pass = False
-		else:
-			base += '.' + parts.pop(0)
-	
- 	tries = 1
-	while(glob.glob(outfile)):
-		outfile = base + str(tries) + '.' + ext
-		tries += 1
-		
-	return outfile
+		elif not delim:
+			return parse(add_delims_to_line(the_line))
 
+		if ch in delims and (not delim or delim == ch):
+			if not delim: 
+				delim = ch
+
+			if delim and delim == ch: #consis delim
+				dc += 1
+				is_in = not is_in
+				if not is_in:
+					fc += 1
+					fields.append(buff)
+					buff = ''
+				continue 
+
+		elif not is_in:
+			if ch in seps:
+				if not sep: 
+					sep = ch
+
+				if sep and sep == ch:
+					sc += 1
+
+		if is_in: #is_in
+			buff += ch
+	
+	return fields
+	#assert not dc % 2
+	#assert (dc/2) - 1 is sc
+	#assert fc is len(fields)
+	#print "results: cc=%d, dc=%d, sc=%d, fc=%d" % (cc, dc, sc, fc)
+
+def add_delims_to_line(the_line):
+	#does line have any seps?
+	global delims, seps
+
+	the_sep = None
+	the_delim = None
+	delim_list = list(delims)
+
+	for s in seps:
+		if the_line.count(s):
+			the_sep = s
+			break
+
+	while delim_list:
+		the_delim = delim_list.pop(0)
+		if  not the_line.count(the_delim):
+			break
+
+	if not the_delim:
+		#throw ex here!!!
+		print "CANT DO IT..."
+
+	#step one, surround w delims
+	the_line = the_line.strip()
+	the_line = the_line.center(len(the_line)+2, the_delim)
+	
+	if not the_sep: #single field line
+		return the_line
+	
+	#multi-field line
+	sps = the_sep + ' '
+	while the_line.count(sps):
+		the_line = the_line.replace(sps, the_sep)
+
+	#step two, surround the seps w delims
+	dsd = the_delim + the_sep + ' ' + the_delim
+	the_line = the_line.replace(the_sep, dsd)
+
+	return the_line
+
+def get_file_format(the_line):
+	email_field = -1
+	fields = parse(the_line)
+	print fields
+	i = 0
+	for f in fields:
+		if validate_email(f):
+			email_field = i
+			break
+		i += 1
+		
+	ff = file_format()
+	ff.field_count = len(fields)
+	ff.email_field = email_field
+	if ff.email_field == -1 and i == 1: #only one field, assume email
+		ff.email_field = 0
+		
+	return ff
+	
 
 def line_to_fields(the_line, format):
 	indexes = format.delim_indexes
@@ -222,7 +243,7 @@ def line_to_fields(the_line, format):
 		del indexes[:2]
 	
 	return fields_to_return
-	
+
 class FileParts:
 	pass
 	
