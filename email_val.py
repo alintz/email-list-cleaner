@@ -54,14 +54,18 @@ def process_file(infile):
 		total += 1
 		
 		ff = get_file_format(line)
-		while ff.email_field == -1 and total < 3:
-		#if (total == 1):
+		#while ff.email_field == -1 and total < 3:
+		if (total == 1):
 			ff = get_file_format(line)
 			if ff.email_field == -1:
-				print "MUST QUIT HERE - THROW EXECPTION"		
+				#get it from user
+				fields = parse(line)
+				email_field = ask_user_which_field_is_email(fields) - 1
+				ff.email_field = email_field
 			if total == 1:
 				outstream.write(line) #write header
-		
+			continue
+			
 		fields = parse(line)
 		email = fields[ff.email_field]
 		email = clean_email(email)
@@ -91,7 +95,18 @@ def process_file(infile):
 		os.rename(outfile, infile)
 
 	return pf
-	
+
+def ask_user_which_field_is_email(fields):
+	#ding
+	print '\a'
+	prompt = 'Please pick the email field:\n'
+	i = 1
+	for fi in fields:
+		prompt += '%d: %s\n' % (i, fi)
+		i += 1
+	while True:
+		choice = int(raw_input(prompt))
+		return choice
 	
 class line_format:
 	def __init__(self):
@@ -298,13 +313,6 @@ def do_config():
 			return usage(cur_arg)
 		
 		i += 1
-	#if len(args) > 0:
-	#	for a in sys.argv:
-	#		print 'arg', a
-	#		try:
-	#			set_opt(avail_opts[a])
-	#		except KeyError:
-	#			return usage()
 
 def set_opt(opt):
 	global config
