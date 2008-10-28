@@ -4,7 +4,7 @@
 email_val.py
 
 Created by Robert McFadden on 2008-10-20.
-Copyright (c) 2008 __MyCompanyName__. All rights reserved.
+Copyright (c) 2008. All rights reserved.
 """
 
 import sys
@@ -17,6 +17,7 @@ from validation.email import validate_email, clean_email
 
 __DEBUG__ = False
 config = {'overwrite_files' : False, 'has_header' : True}
+FILE_PATH = "RDM_EMAIL_REPOS_PATH"
 
 delims = '"', '\'', '`'
 seps = '\t', ','
@@ -28,16 +29,27 @@ def main():
 	processed = []
 
 	for fil in csv_files:
-		pf_def = process_file(fil)
-		processed.append(pf_def)
+		try:
+			pf_def = process_file(fil)
+			processed.append(pf_def)
+		except:
+			#TODO: handle ex properly
+			pass
 		
 	results(processed)
 
 def get_csv_files():
-	files = glob.glob("*.csv");
+	global FILE_PATH
+	d = os.getenv(FILE_PATH)
+	match_ext = '*.csv'
+	
+	p = '%s/%s' % (d, match_ext)
+	files = glob.glob(p);
 	return files
 
 def process_file(infile):
+	global config
+	
 	good = 0
 	bad = 0
 	cleaned = 0
@@ -51,21 +63,20 @@ def process_file(infile):
 	
 	ff = None #file_format obj
 	for line in instream:
-		total += 1
+		total += 1	
 		
-		ff = get_file_format(line)
-		#while ff.email_field == -1 and total < 3:
-		if (total == 1):
+		if (total == 1 and config['has_header']):
 			ff = get_file_format(line)
 			if ff.email_field == -1:
 				#get it from user
 				fields = parse(line)
-				email_field = ask_user_which_field_is_email(fields) - 1
+				email_field = ask_user_which_field_is_email(fields)
+				email_field -= 1 #comp for 0 index
 				ff.email_field = email_field
-			if total == 1:
-				outstream.write(line) #write header
-			continue
 			
+			outstream.write(line) #write header
+			continue
+		
 		fields = parse(line)
 		email = fields[ff.email_field]
 		email = clean_email(email)
@@ -75,7 +86,6 @@ def process_file(infile):
 			if email != fields[ff.email_field]:
 				cleaned += 1
 				line = line.replace(fields[ff.email_field], email)
-			#fields[ff.email_field] = clean_email
 			
 			#TODO: need to get the line back from feilds, but for now just write the line
 			outstream.write(line)
@@ -84,6 +94,8 @@ def process_file(infile):
 			
 	pf.good_emails = good
 	pf.bad_emails = bad
+	if config['has_header']:
+		total -= 1
 	pf.total_emails = total
 	
 	#close streams	
@@ -97,16 +109,21 @@ def process_file(infile):
 	return pf
 
 def ask_user_which_field_is_email(fields):
-	#ding
-	print '\a'
+	print '\a' #ding
 	prompt = 'Please pick the email field:\n'
 	i = 1
 	for fi in fields:
 		prompt += '%d: %s\n' % (i, fi)
 		i += 1
+	prompt += '>>> '
+		
+	valid = range(1,len(fields)+1)
 	while True:
 		choice = int(raw_input(prompt))
-		return choice
+		if choice in valid:
+			return choice
+		else:
+			print 'bad choice...'
 	
 class line_format:
 	def __init__(self):
@@ -131,6 +148,7 @@ class line_object:
 
 def parse(the_line):
 	"""
+	doc string needed...
 	"""
 	
 	the_line = the_line.strip()
@@ -178,10 +196,6 @@ def parse(the_line):
 			buff += ch
 	
 	return fields
-	#assert not dc % 2
-	#assert (dc/2) - 1 is sc
-	#assert fc is len(fields)
-	#print "results: cc=%d, dc=%d, sc=%d, fc=%d" % (cc, dc, sc, fc)
 
 def add_delims_to_line(the_line):
 	#does line have any seps?
@@ -226,7 +240,7 @@ def add_delims_to_line(the_line):
 def get_file_format(the_line):
 	email_field = -1
 	fields = parse(the_line)
-	print fields
+	debug(fields)
 	i = 0
 	for f in fields:
 		if validate_email(f):
@@ -242,7 +256,6 @@ def get_file_format(the_line):
 		
 	return ff
 	
-
 def line_to_fields(the_line, format):
 	indexes = format.delim_indexes
 	fields_to_return = []
@@ -295,12 +308,15 @@ def results(p_res):
 		print "--------------------------------"
 		i = 1
 		for p_now in p_res:
-			print "file %d had %d total lines (emails) %d were good, %d were bad" \
-				% (i, p_now.total_emails, p_now.good_emails, p_now.bad_emails)
+			per_good = (p_now.good_emails / p_now.total_emails) * 100
+			per_bad = (p_now.bad_emails / p_now.total_emails) * 100
+			
+			print "file %d had %d total lines (emails) %d were good (%0.2f%%), %d were bad" \
+				% (i, p_now.total_emails, p_now.good_emails, per_good, p_now.bad_emails)
 			i += 1
 
 def do_config():
-	avail_opts = {'-o' : "overwrite_files"}
+	avail_opts = {'-o' : "overwrite_files", '-d' : 'debug'}
 	args = sys.argv
 	
 	i = 1
