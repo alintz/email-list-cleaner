@@ -29,22 +29,26 @@ def main():
 	processed = []
 
 	for fil in csv_files:
-		try:
-			pf_def = process_file(fil)
-			processed.append(pf_def)
-		except:
+		#try:
+		pf_def = process_file(fil)
+		processed.append(pf_def)
+        #except:
+		#	print "Had an ex"
 			#TODO: handle ex properly
-			pass
+		#	pass
 		
 	results(processed)
 
 def get_csv_files():
 	global FILE_PATH
 	d = os.getenv(FILE_PATH)
+	d = "/Users/d3mcfadden/Desktop/email_list/"
+
 	match_ext = '*.csv'
 	
 	p = '%s/%s' % (d, match_ext)
 	files = glob.glob(p);
+	print len(files), "num of files"
 	return files
 
 def process_file(infile):
@@ -73,14 +77,16 @@ def process_file(infile):
 				email_field = ask_user_which_field_is_email(fields)
 				email_field -= 1 #comp for 0 index
 				ff.email_field = email_field
-			
+
 			outstream.write(line) #write header
 			continue
-		
-		fields = parse(line)
+
+		fields = parse(line, ff)
 		email = fields[ff.email_field]
 		email = clean_email(email)
-	
+		
+		print total, " -- ", len(fields)
+		
 		if validate_email(email):
 			good += 1
 			if email != fields[ff.email_field]:
@@ -108,45 +114,7 @@ def process_file(infile):
 
 	return pf
 
-def ask_user_which_field_is_email(fields):
-	print '\a' #ding
-	prompt = 'Please pick the email field:\n'
-	i = 1
-	for fi in fields:
-		prompt += '%d: %s\n' % (i, fi)
-		i += 1
-	prompt += '>>> '
-		
-	valid = range(1,len(fields)+1)
-	while True:
-		choice = int(raw_input(prompt))
-		if choice in valid:
-			return choice
-		else:
-			print 'bad choice...'
-	
-class line_format:
-	def __init__(self):
-		self.sep = None
-		self.delim = None
-		self.field_count = 0
-		self.sep_count = 0
-		self.delim_count = 0
-		self.delim_indexes = None
-
-class file_format:
-	def __init__(self):
-		self.field_count = 0
-		self.email_field = -1
-
-class line_object:
-	def __init__(self):
-		self.fields = []
-		self.field_count = 0
-		self.sep_count = 0
-		self.delim_count = 0
-
-def parse(the_line):
+def parse(the_line, format=None):
 	"""
 	doc string needed...
 	"""
@@ -159,7 +127,11 @@ def parse(the_line):
 	nf = False
 	delim = None 
 	sep = None
-
+	
+	if format:
+		delim = format.delim
+		sep = format.sep
+	
 	buff = ''
 	fields = []
 	for ch in the_line:
@@ -194,6 +166,9 @@ def parse(the_line):
 
 		if is_in: #is_in
 			buff += ch
+	
+	format.delim = delim
+	format.sep = sep
 	
 	return fields
 
@@ -239,8 +214,12 @@ def add_delims_to_line(the_line):
 
 def get_file_format(the_line):
 	email_field = -1
+	delim = None
+	sep = None
+	
 	fields = parse(the_line)
 	debug(fields)
+	
 	i = 0
 	for f in fields:
 		if validate_email(f):
@@ -251,11 +230,13 @@ def get_file_format(the_line):
 	ff = file_format()
 	ff.field_count = len(fields)
 	ff.email_field = email_field
+	
 	if ff.email_field == -1 and i == 1: #only one field, assume email
 		ff.email_field = 0
 		
 	return ff
-	
+
+#[depricated]
 def line_to_fields(the_line, format):
 	indexes = format.delim_indexes
 	fields_to_return = []
@@ -272,9 +253,26 @@ def line_to_fields(the_line, format):
 	
 	return fields_to_return
 
-class FileParts:
-	pass
-	
+def ask_user_which_field_is_email(fields):
+	print '\a' #ding
+	prompt = 'Please pick the email field:\n'
+	i = 1
+	for fi in fields:
+		prompt += '%d: %s\n' % (i, fi)
+		i += 1
+	prompt += '>>> '
+
+	valid = range(1,len(fields)+1)
+	while True:
+		choice = int(raw_input(prompt))
+		if choice in valid:
+			return choice
+		else:
+			print 'bad choice...'
+
+#----------------------------
+#Data Model
+#----------------------------
 class ProcessedFile:
 	def __init__(self):
 		self.orig_name = ''
@@ -286,6 +284,31 @@ class ProcessedFile:
 		
 		self.bad_email_list = []
 
+class line_format:
+	def __init__(self):
+		self.sep = None
+		self.delim = None
+		self.field_count = 0
+		self.sep_count = 0
+		self.delim_count = 0
+		self.delim_indexes = None
+
+class file_format:
+	def __init__(self):
+		self.field_count = 0
+		self.email_field = -1
+
+		self.delim = None
+		self.sep = None
+
+class line_object:
+	def __init__(self):
+		self.fields = []
+		self.field_count = 0
+		self.sep_count = 0
+		self.delim_count = 0
+		
+#-------------------------------------
 
 def usage(*args):
 	#print usage
@@ -298,7 +321,6 @@ def usage(*args):
 	#reg usage
 	print """usage python email_val.py [opts]
 	"""
-	
 	exit()
 	
 def results(p_res):
@@ -315,6 +337,11 @@ def results(p_res):
 				% (i, p_now.total_emails, p_now.good_emails, per_good, p_now.bad_emails)
 			i += 1
 
+
+
+#----------------------------------------------------
+# Config
+#----------------------------------------------------
 def do_config():
 	avail_opts = {'-o' : "overwrite_files", '-d' : 'debug'}
 	args = sys.argv
